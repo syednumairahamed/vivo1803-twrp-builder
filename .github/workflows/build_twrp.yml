@@ -1,0 +1,93 @@
+name: Build TWRP Recovery for Vivo 1803 (PD1732F_EX)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build TWRP 8.1
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Clean Runner Storage
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        df -h
+
+    - name: Setup Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf \
+          imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 \
+          libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
+          schedtool squashfs-tools xsltproc zip zlib1g-dev python-is-python3
+
+    - name: Install Repo Tool
+      run: |
+        mkdir -p ~/bin
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Initialize and Sync TWRP Manifest
+      run: |
+        mkdir -p twrp
+        cd twrp
+        git config --global user.name "syednumairahamed"
+        git config --global user.email "syednumairahamed@users.noreply.github.com"
+        ~/bin/repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git -b twrp-8.1 --depth=1
+        ~/bin/repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+
+    - name: Clone Vivo 1803 / PD1732F Device Tree
+      run: |
+        cd twrp
+        git clone --depth=1 https://github.com/twrpdtgen/android_device_vivo_PD1732F_EX.git -b full_k62v1_64_bsp-user-8.1.0-O11019-1625667558-release-keys device/vivo/PD1732F_EX
+
+    - name: Compile TWRP Recovery Image
+      run: |
+        cd twrp
+        export ALLOW_MISSING_DEPENDENCIES=true
+        source build/envsetup.sh
+        lunch omni_PD1732F_EX-eng
+        make clean
+        mka recoveryimage -j$(nproc --all)
+
+    - name: Check Output File
+      run: |
+        ls -lh twrp/out/target/product/PD1732F_EX/recovery.img
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: twrp-vivo1803-PD1732F
+        path: twrp/out/target/product/PD1732F_EX/recovery.img
+
+    - name: Release TWRP Recovery Image
+      uses: softprops/action-gh-release@v2
+      with:
+        files: twrp/out/target/product/PD1732F_EX/recovery.img
+        name: TWRP 3.x for Vivo 1803 / Y81 (PD1732F_EX)
+        tag_name: v${{ github.run_number }}
+        body: |
+          Official TWRP Recovery image for Vivo 1803 / Y81 (PD1732F_EX, MediaTek MT6765).
+
+          ### Flashing Instructions:
+          1. Boot phone into Fastboot mode (`adb reboot bootloader` or Hold `Vol Up + Power`).
+          2. Flash recovery:
+             ```bash
+             fastboot flash recovery recovery.img
+             ```
+          3. Reboot into TWRP recovery.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
