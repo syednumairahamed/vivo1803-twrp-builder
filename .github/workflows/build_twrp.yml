@@ -68,6 +68,8 @@ jobs:
       run: |
         cd twrp
         git clone --depth=1 https://github.com/twrpdtgen/android_device_vivo_PD1732F_EX.git -b full_k62v1_64_bsp-user-8.1.0-O11019-1625667558-release-keys device/vivo/PD1732F_EX
+        # Remove Android.bp containing soong_namespace (Android 9+ syntax that breaks Android 8.1 Soong parser)
+        rm -f device/vivo/PD1732F_EX/Android.bp
 
     - name: Compile TWRP Recovery Image
       run: |
@@ -75,7 +77,6 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         source build/envsetup.sh
         lunch omni_PD1732F_EX-eng
-        make clean
         make recoveryimage -j$(nproc --all)
 
     - name: Check and Stage Output File
